@@ -72,6 +72,21 @@ def gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, doma
 ##### Train n-way classifier #####
 ##### End Train n-way classifier #####
 
+##### Unlabeled predictions #####
+def get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels):
+	X = domain_1_reps
+	Y = domain_1_labels
+	Z = domain_2_reps
+	scaler = preprocessing.StandardScaler().fit(X)
+	X_scaled = scaler.transform(X)
+	SVM = svm.LinearSVC(multi_class='ovr')
+	SVM.fit(X_scaled, Y)
+	scaler = preprocessing.StandardScaler().fit(Z)
+	Z_scaled = scaler.transform(Z)
+	unsupervised_labels = SVM.predict(Z_scaled)
+	return unsupervised_labels
+##### End Unlabeled predictions #####
+
 ##### Make State Representation #####
 ##### End Make State Representation #####
 
@@ -88,4 +103,5 @@ if __name__ == '__main__':
 	# Get positive and reward sets
 	s_pos, reward_set = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim)
 
-	# Generate initial state representations
+	domain_2_labels = get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels)
+	
