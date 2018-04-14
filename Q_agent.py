@@ -141,19 +141,17 @@ def get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels):
 	return unsupervised_labels
 ##### End Unlabeled predictions #####
 
-##### Make State Representation #####
-def get_histograms(num_hist, domain_2_reps, given_SVM):
-	num_samples = domain_2_reps.shape[0]
-	given_hist = np.zeros((num_samples, num_hist), dtype='float')
-	for i in range(0, num_samples):
-	
-	return
-##### End Make State Representation #####
+def gen_state(SVM, domain_2_reps):
+	X = domain_2_reps
+	scaler = preprocessing.StandardScaler().fit(X)
+	X_scaled = scaler.transform(X)
+	hist_all = SVM.decision_function(X_scaled)
+	return hist_all
 
 if __name__ == '__main__':
 	source_domain = 'amazon'
 	target_domain = 'dslr'
-	num_s_pos_samples = 50
+	num_s_pos_samples = 100
 	num_reward_samples = 3
 	max_iters = 2000
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
@@ -169,4 +167,5 @@ if __name__ == '__main__':
 	for given_iter in range(0, max_iters):
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
+		given_state = gen_state(given_SVM, domain_2_reps)
 		print(given_accu)
