@@ -142,6 +142,11 @@ def get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels):
 	return unsupervised_labels
 ##### End Unlabeled predictions #####
 
+def softmax(w, t = 1.0):
+    e = np.exp(np.array(w) / t)
+    dist = e / np.sum(e)
+    return dist
+
 def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
 	num_samples = len(s_pos)
 	num_classes = 31
@@ -155,13 +160,17 @@ def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
 	X_scaled = scaler.transform(X)
 	hist_all = SVM.decision_function(X_scaled)
 	svm_predictions = SVM.predict(X_scaled)
-	for given_class in range(0, num_classes):
-		for given_sample_idx in range(0, len(s_pos)):
-			given_sample = s_pos[given_sample_idx]
-			given_rep = abs(hist_all[given_sample_idx])
-			
-	print(hist_all.shape)
-	return hist_all
+	pred_classes = list(set([int(i) for i in svm_predictions]))
+	for given_sample_idx in range(0, len(s_pos)):
+		given_sample = s_pos[given_sample_idx]
+		given_rep = softmax(abs(hist_all[given_sample_idx]))
+		given_sample_class = int(svm_predictions[given_sample_idx])
+		class_idx = pred_classes.index(given_sample_class)
+		given_val = given_rep[class_idx]
+		hist_div = float(1)/float(num_hist)
+		given_hist = int(float(given_val)/float(hist_div))
+		hist_out[given_sample_class][given_hist] += 1
+	return hist_out
 
 def init_dict_domain_2(domain_2_reps, domain_2_labels):
 	dict_domain_2 = {}
@@ -170,18 +179,19 @@ def init_dict_domain_2(domain_2_reps, domain_2_labels):
 
 def sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num=100):
 	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
-	print(available_samples)
 	sampled_idxs = np.random.randint(low=0, high=len(available_samples), size=sample_num)
 	given_reps = np.zeros((sample_num, rep_dim), dtype='float')
 	given_labels = np.zeros((sample_num, 1), dtype='float')
 	i = 0
+	out_idxs = []
 	for idx in sampled_idxs:
 		given_idx = available_samples[idx]
+		out_idxs.append(given_idx)
 		given_reps[i,:] = domain_2_reps[given_idx,:]
 		given_labels[i] = domain_2_labels[given_idx]
-	return given_reps, given_labels
+	return given_reps, given_labels, out_idxs
 
-def gen_state_samples(domain_2_reps, domain_2_labels, SVM):
+def gen_state_samples(sampled_reps, sampled_labels, sampled_idxs, SVM):
 	
 if __name__ == '__main__':
 	source_domain = 'amazon'
@@ -203,11 +213,15 @@ if __name__ == '__main__':
 
 	# Get labels for domain-2 using classifier trained on domain-1
 	domain_2_labels = get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels)
-	
-	sampled_reps, sampled_labels = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
+
+	# Sample a given number of data points from available samples	
+	sampled_reps, sampled_labels, sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 
 	for given_iter in range(0, max_iters):
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
-		given_state = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
+		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
+		print(h_pos)
+		print(sum(sum(h_pos)))
+		sys.exit(1)
 		print(given_accu)
