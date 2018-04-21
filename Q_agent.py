@@ -46,7 +46,7 @@ def data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samp
 ##### End data loader #####
 
 ##### Initialize S_pos_set and R_set #####
-def gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim):
+def gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2):
 	domain_class_data_X = np.concatenate((domain_1_reps, domain_2_reps), axis=0)
 	domain_class_data_Y_1 = np.zeros((num_domain_1_images,1), dtype='float')
 	domain_class_data_Y_2 = np.ones((num_domain_2_images,1), dtype='float')
@@ -79,7 +79,7 @@ def gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, doma
 		given_class_list = sorted(class_dist_dict[given_class], key=lambda x:x[1])
 		for given_sample in given_class_list[:num_reward_samples]:
 			reward_set[given_class].append(given_sample[0])
-
+			dict_domain_2[given_sample[0]] = int(1)
 	s_pos = []
 	sample_distances_pairs = []
 	for given_sample in range(0, len(sample_distances)):
@@ -88,7 +88,8 @@ def gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, doma
 	sorted_sample_dist = sorted(sample_distances_pairs, key=lambda x:x[1])
 	for given_sample in sorted_sample_dist[len(sorted_sample_dist)-num_s_pos_samples:]:
 		s_pos.append(given_sample[0])
-	return s_pos, reward_set
+		dict_domain_2[given_sample[0]] = int(1)
+	return s_pos, reward_set, dict_domain_2
 ##### End Initialization #####
 
 ##### Train n-way classifier #####
@@ -141,31 +142,72 @@ def get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels):
 	return unsupervised_labels
 ##### End Unlabeled predictions #####
 
-def gen_state(SVM, domain_2_reps):
-	X = domain_2_reps
+def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
+	num_samples = len(s_pos)
+	num_classes = 31
+	hist_out = np.zeros((num_classes, num_hist), dtype='float')
+	X = np.zeros((num_samples, rep_dim), dtype='float')
+	idx = 0
+	for given_sample in s_pos:
+		X[idx,:] = domain_2_reps[given_sample,:]
+		idx += 1
 	scaler = preprocessing.StandardScaler().fit(X)
 	X_scaled = scaler.transform(X)
 	hist_all = SVM.decision_function(X_scaled)
+	svm_predictions = SVM.predict(X_scaled)
+	for given_class in range(0, num_classes):
+		for given_sample_idx in range(0, len(s_pos)):
+			given_sample = s_pos[given_sample_idx]
+			given_rep = abs(hist_all[given_sample_idx])
+			
+	print(hist_all.shape)
 	return hist_all
 
+def init_dict_domain_2(domain_2_reps, domain_2_labels):
+	dict_domain_2 = {}
+	for i in range(0, domain_2_reps.shape[0]): dict_domain_2[i] = int(0)
+	return dict_domain_2	
+
+def sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num=100):
+	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
+	print(available_samples)
+	sampled_idxs = np.random.randint(low=0, high=len(available_samples), size=sample_num)
+	given_reps = np.zeros((sample_num, rep_dim), dtype='float')
+	given_labels = np.zeros((sample_num, 1), dtype='float')
+	i = 0
+	for idx in sampled_idxs:
+		given_idx = available_samples[idx]
+		given_reps[i,:] = domain_2_reps[given_idx,:]
+		given_labels[i] = domain_2_labels[given_idx]
+	return given_reps, given_labels
+
+def gen_state_samples(domain_2_reps, domain_2_labels, SVM):
+	
 if __name__ == '__main__':
 	source_domain = 'amazon'
 	target_domain = 'dslr'
 	num_s_pos_samples = 100
 	num_reward_samples = 3
 	max_iters = 2000
+	sample_num = 100
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
 
 	# Load the data
        	domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim = data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir)
 
-	# Get positive and reward sets
-	s_pos, reward_set = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim)
+        # Create a dict for samples in domain-2
+        dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
 
+	# Get positive and reward sets
+	s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
+
+	# Get labels for domain-2 using classifier trained on domain-1
 	domain_2_labels = get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels)
 	
+	sampled_reps, sampled_labels = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
+
 	for given_iter in range(0, max_iters):
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
-		given_state = gen_state(given_SVM, domain_2_reps)
+		given_state = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		print(given_accu)
