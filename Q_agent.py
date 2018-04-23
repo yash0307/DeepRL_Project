@@ -328,7 +328,8 @@ if __name__ == '__main__':
 	num_s_pos_samples = 100
 	num_reward_samples = 3
 	max_iters = 20000
-	sample_num = 100
+	sample_num = 20
+	max_explor_iter = 2000
 	num_hist = 10
 	num_classes = 31
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
@@ -368,6 +369,9 @@ if __name__ == '__main__':
 		# Check if environment needs to be reset
 		check_flag = check_reset(dict_domain_2, sample_num)
 		if check_flag == True:
+
+			q_agent.save_model_weights(self.model, 'model_'+str(given_iter)+'.h5')
+
 			# Create a dict for samples in domain-2
         		dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
 
@@ -375,19 +379,21 @@ if __name__ == '__main__':
         		s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
 
 		# Get reward and current state parameters
-		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
-		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
-		action = q_agent.get_action(state)
-		if action <= sample_num:
+		if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_eplore_iter:
+			action = np.random.choice(range(0,num_actions), size=1)[0]
+		else: 
+			action = q_agent.get_action(state)
+		if action <= sample_num-1:
 			sample_id = sampled_idxs[action]
 			s_pos.append(sample_id)
 			dict_domain_2[sample_id] = 1
-		if action > sample_num: print('Do nothing action taken')
+		else: print('Do nothing action taken')
 
 		# Get next state representation
+		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
