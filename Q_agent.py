@@ -84,9 +84,9 @@ class QNetwork():
 
         if model_type == 'dqn':
             model = Sequential()
-            model.add(Dense(state_size, input_dim=state_size, activation='relu'))
-            model.add(Dense(512, input_dim=state_size, activation='relu'))
-            model.add(Dense(num_actions, activation='linear'))
+            model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
+            model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
+            model.add(Dense(num_actions, activation='sigmoid', kernel_initializer='glorot_normal', bias_initializer='zeros'))
 
         if model_type == 'ddqn':
             input_layer = Input(shape=(state_size,))
@@ -288,6 +288,10 @@ def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
 		hist_div = float(1)/float(num_hist)
 		given_hist = int(float(given_val)/float(hist_div))
 		hist_out[given_sample_class][given_hist] += 1
+
+	for given_class in range(0, num_classes):
+		hist_out[given_class,:] = softmax(hist_out[given_class,:])
+
 	return hist_out
 
 def get_final_state_rep(h_pos, h_cand):
@@ -382,10 +386,11 @@ if __name__ == '__main__':
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
-		if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_explore_iter:
-			action = np.random.choice(range(0,num_actions), size=1)[0]
-		else: 
-			action = q_agent.get_action(state)
+		#if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_explore_iter:
+		#if False:
+		#	action = np.random.choice(range(0,num_actions), size=1)[0]
+		#else: 
+		action = q_agent.get_action(state)
 		if action <= sample_num-1:
 			sample_id = sampled_idxs[action]
 			s_pos.append(sample_id)
@@ -399,7 +404,7 @@ if __name__ == '__main__':
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		next_state = get_final_state_rep(h_pos, h_cand)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
-                reward = given_accu - accu
+                reward = (given_accu - accu)
                 accu = given_accu
 
 		# Train the Q-agent
