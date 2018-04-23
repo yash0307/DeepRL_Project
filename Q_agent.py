@@ -316,13 +316,18 @@ def sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample
 		i += 1
 	return out_idxs
 
+def check_reset(dict_domain_2, sample_num):
+	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
+	if len(available_samples) < sample_num: return True
+	else: return False
+
 if __name__ == '__main__':
 
 	source_domain = 'amazon'
 	target_domain = 'dslr'
 	num_s_pos_samples = 100
 	num_reward_samples = 3
-	max_iters = 2000
+	max_iters = 20000
 	sample_num = 100
 	num_hist = 10
 	num_classes = 31
@@ -360,6 +365,16 @@ if __name__ == '__main__':
                 dict_domain_2[sample_id] = 1
 
 	for given_iter in range(1, max_iters):
+		# Check if environment needs to be reset
+		check_flag = check_reset(dict_domain_2, sample_num)
+		if check_flag == True:
+			# Create a dict for samples in domain-2
+        		dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
+
+        		# Get positive and reward sets
+        		s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
+			continue
+
 		# Get reward and current state parameters
 		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
