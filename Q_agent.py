@@ -382,7 +382,7 @@ if __name__ == '__main__':
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
-		if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_eplore_iter:
+		if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_explore_iter:
 			action = np.random.choice(range(0,num_actions), size=1)[0]
 		else: 
 			action = q_agent.get_action(state)
