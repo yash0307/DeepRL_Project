@@ -382,5 +382,5 @@ if __name__ == '__main__':
 		next_state = get_final_state_rep(h_pos, h_cand)
 
 		# Train the Q-agent
-		q_agent.train(self, state, action, reward, next_state, done=False, gamma=1)
+		q_agent.train(state, action, reward, next_state, done=False, gamma=1)
 		print('Acu at '  + str(given_iter) + ': ' + str(accu))
