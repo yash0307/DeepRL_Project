@@ -373,7 +373,6 @@ if __name__ == '__main__':
 
         		# Get positive and reward sets
         		s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
-			continue
 
 		# Get reward and current state parameters
 		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
