@@ -30,6 +30,98 @@ import argparse
 from collections import deque
 import random
 
+class QNetwork():
+    def __init__(self, num_actions, state_size):
+        '''
+	    Initialize the class as per input parameters.
+            Parameters:
+	        environment_name (type string): Name of environment to be used. Possible values: 'CartPole-v0', 'MountainCar-v0', 'SpaceInvaders-v0'
+	        model_type (type string): Name of model type to be used. Possible valies: 'linear_dqn', 'dqn', 'ddqn', 'dqn_space_invaders'
+	'''
+	environment_name = 'DomainAdaptation'
+	model_type = 'dqn'
+        self.model = self.LinearDQN_initialize(model_type, num_actions, state_size)
+
+    def checkpoint_swap(self, environment_name):
+        '''
+	    Given an environment name save the recent model as checkpoint.
+	    Parameters: 
+	        environment_name (type string): Name of the environment.
+	'''
+        print('Reloading model....')
+        self.model_1 = load_model('model_init_'+environment_name+'.h5')
+        
+    def save_model_weights(self, model, suffix):
+        '''
+	    Given a model and string with model name, saves the model weights and defination.
+	    Parameters: 
+	        model (type keras model): Model to be saved.
+		suffix (type string): Output path to which model is to be saved.
+	'''
+        print('Saving model....')
+        model.save(suffix)
+
+    def load_model(self, model_file):
+        '''
+	    Given a model file name, loads the model and returns it.
+	    Parameters: 
+	        model_file (type string): Path of model file to be loaded.
+	'''
+        print('Loading model....')
+        model = load_model(model_file)
+        return model
+
+
+    def LinearDQN_initialize(self, model_type, num_actions, state_size):
+        '''
+	    Given the type of model. This function initializes the model architecture.
+	    Parameters:
+	        model_type (type string): Specifies what model to initialize.
+	'''
+        if model_type == 'linear_dqn':
+            model = Sequential()
+            model.add(Dense(self.num_actions, input_dim=self.state_size))
+
+        if model_type == 'dqn':
+            model = Sequential()
+            model.add(Dense(state_size, input_dim=state_size, activation='relu'))
+            model.add(Dense(512, input_dim=state_size, activation='relu'))
+            model.add(Dense(num_actions, activation='linear'))
+
+        if model_type == 'ddqn':
+            input_layer = Input(shape=(state_size,))
+            x = Dense(state_size, activation='relu')(input_layer)
+            state_val = Dense(1, activation='linear')(x)
+            y = Dense(512, activation='relu')(input_layer)
+            y = Dense(512, activation='relu')(y)
+            adv_vals = Dense(num_actions, activation='linear')(y)
+            policy = keras.layers.merge([adv_vals, state_val], mode=lambda x: x[0]-K.mean(x[0])+x[1], output_shape = (self.num_actions,))
+            model = Model(input=[input_layer], output=[policy])
+
+        model.summary()
+        model.compile(loss='mean_squared_error', optimizer=keras.optimizers.Adam(lr=0.001))
+        return model
+
+    def get_action(self, state):
+        '''
+	    Given a state in form of state varialbes, returns the optimal action as per current model.
+	    Parameters:
+	        state (type numpy array): contains array of size as number of environment state variables.
+	'''
+        pred_action = self.model.predict(state)
+        return np.argmax(pred_action[0])
+
+    def train(self, state, action, reward, next_state, done, gamma):
+        '''
+	    Given a state, action, reward, next_state and done flag train the model stochastically for given input.
+	'''
+        target = reward
+        if not done:
+            target = (reward + gamma * np.amax(self.model.predict(next_state)[0]))
+        target_f = self.model.predict(state)
+        target_f[0][action] = target
+        self.model.fit(state, target_f, epochs=1, verbose=1)
+
 ##### Load Data #####
 def data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir):
 	domain_1_reps = np.load(data_dir+'features_from_'+source_domain+'_to_'+source_domain+'.npy')
@@ -198,6 +290,14 @@ def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
 		hist_out[given_sample_class][given_hist] += 1
 	return hist_out
 
+def get_final_state_rep(h_pos, h_cand):
+	h_pos = h_pos.flatten()
+	h_cand = h_cand.flatten()
+	h_final = np.concatenate((h_pos, h_cand), axis=0)
+	state = np.zeros((1, h_final.shape[0]),dtype='float')
+	state[0,:] = h_final
+	return state
+
 def init_dict_domain_2(domain_2_reps, domain_2_labels):
 	dict_domain_2 = {}
 	for i in range(0, domain_2_reps.shape[0]): dict_domain_2[i] = int(0)
@@ -224,6 +324,8 @@ if __name__ == '__main__':
 	num_reward_samples = 3
 	max_iters = 2000
 	sample_num = 100
+	num_hist = 10
+	num_classes = 31
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
 
 	# Load the data
@@ -240,13 +342,45 @@ if __name__ == '__main__':
 
 	# Sample a given number of data points from available samples	
 	sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
+	num_actions = len(sampled_idxs) + 1
+	state_size = len(sampled_idxs)*num_classes + num_classes*num_hist
+	q_agent = QNetwork(num_actions, state_size)
 
-	for given_iter in range(0, max_iters):
+	# Do the first iteration of network
+	given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
+        accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
+	print('Acu at 0: ' + str(accu))
+        h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
+        h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
+        state = get_final_state_rep(h_pos, h_cand)
+        action = q_agent.get_action(state)
+        if action <= sample_num:
+         	sample_id = sampled_idxs[action]
+                s_pos.append(sample_id)
+                dict_domain_2[sample_id] = 1
+
+	for given_iter in range(1, max_iters):
+		# Get reward and current state parameters
+		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
+		reward = given_accu - accu
+		accu = given_accu
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
-		for i in range(0,h_cand.shape[0]):
-			print(h_cand[i,:])
-		sys.exit(1)
-		print(given_accu)
+		state = get_final_state_rep(h_pos, h_cand)
+		action = q_agent.get_action(state)
+		if action <= sample_num:
+			sample_id = sampled_idxs[action]
+			s_pos.append(sample_id)
+			dict_domain_2[sample_id] = 1
+		if action > sample_num: print('Do nothing action taken')
+
+		# Get next state representation
+		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
+		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
+		next_state = get_final_state_rep(h_pos, h_cand)
+
+		# Train the Q-agent
+		q_agent.train(self, state, action, reward, next_state, done=False, gamma=1)
+		print('Acu at '  + str(given_iter) + ': ' + str(accu))
