@@ -86,7 +86,7 @@ class QNetwork():
             model = Sequential()
             model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
             model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
-            model.add(Dense(num_actions, activation='sigmoid', kernel_initializer='glorot_normal', bias_initializer='zeros'))
+            model.add(Dense(num_actions, activation='linear', kernel_initializer='glorot_normal', bias_initializer='zeros'))
 
         if model_type == 'ddqn':
             input_layer = Input(shape=(state_size,))
@@ -310,15 +310,7 @@ def init_dict_domain_2(domain_2_reps, domain_2_labels):
 def sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num=100):
 	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
 	sampled_idxs = np.random.choice(available_samples, size=sample_num, replace=False)
-	given_reps = np.zeros((sample_num, rep_dim), dtype='float')
-	given_labels = np.zeros((sample_num, 1), dtype='float')
-	i = 0
-	out_idxs = []
-	for idx in sampled_idxs:
-		given_idx = available_samples[i]
-		out_idxs.append(given_idx)
-		i += 1
-	return out_idxs
+	return sampled_idxs
 
 def check_reset(dict_domain_2, sample_num):
 	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
@@ -391,6 +383,7 @@ if __name__ == '__main__':
 		#	action = np.random.choice(range(0,num_actions), size=1)[0]
 		#else: 
 		action = q_agent.get_action(state)
+		print('Action Taken: ' + str(action))
 		if action <= sample_num-1:
 			sample_id = sampled_idxs[action]
 			s_pos.append(sample_id)
