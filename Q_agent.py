@@ -329,7 +329,7 @@ if __name__ == '__main__':
 	num_reward_samples = 3
 	max_iters = 20000
 	sample_num = 20
-	max_explor_iter = 2000
+	max_explore_iter = 2000
 	num_hist = 10
 	num_classes = 31
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
