@@ -363,9 +363,6 @@ if __name__ == '__main__':
 		# Get reward and current state parameters
 		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
-		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
-		reward = given_accu - accu
-		accu = given_accu
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
@@ -381,6 +378,9 @@ if __name__ == '__main__':
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		next_state = get_final_state_rep(h_pos, h_cand)
+		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
+                reward = given_accu - accu
+                accu = given_accu
 
 		# Train the Q-agent
 		q_agent.train(state, action, reward, next_state, done=False, gamma=1)
