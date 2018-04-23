@@ -379,8 +379,9 @@ if __name__ == '__main__':
 		# Get next state representation
 		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
+		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		next_state = get_final_state_rep(h_pos, h_cand)
 
 		# Train the Q-agent
 		q_agent.train(state, action, reward, next_state, done=False, gamma=1)
-		print('Acu at '  + str(given_iter) + ': ' + str(accu))
+		print('Acu at '  + str(given_iter) + ': ' + str(accu) + ' | No. S_pos: ' + str(len(s_pos)))
