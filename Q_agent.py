@@ -41,6 +41,7 @@ class QNetwork():
 	environment_name = 'DomainAdaptation'
 	model_type = 'ddqn'
         self.model = self.LinearDQN_initialize(model_type, num_actions, state_size)
+        self.model_backup = self.LinearDQN_initialize(model_type, num_actions, state_size)
 
     def checkpoint_swap(self, environment_name):
         '''
@@ -84,17 +85,17 @@ class QNetwork():
 
         if model_type == 'dqn':
             model = Sequential()
-            model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
-            model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
-            model.add(Dense(num_actions, activation='sigmoid', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
+            model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01)))
+            model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01)))
+            model.add(Dense(num_actions, activation='sigmoid', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True, kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01)))
 
         if model_type == 'ddqn':
             input_layer = Input(shape=(state_size,))
-            x = Dense(state_size, activation='relu')(input_layer)
-            state_val = Dense(1, activation='linear')(x)
+            x = Dense(state_size, activation='relu', kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01))(input_layer)
+            state_val = Dense(1, activation='linear', kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01))(x)
             y = Dense(512, activation='relu')(input_layer)
             y = Dense(512, activation='relu')(y)
-            adv_vals = Dense(num_actions, activation='linear')(y)
+            adv_vals = Dense(num_actions, activation='linear', kernel_regularizer=regularizers.l2(0.01), activity_regularizer=regularizers.l1(0.01), bias_regularizer=regularizers.l2(0.01))(y)
             policy = keras.layers.merge([adv_vals, state_val], mode=lambda x: x[0]-K.mean(x[0])+x[1], output_shape = (num_actions,))
             final = Activation('sigmoid')(policy)
             model = Model(input=[input_layer], output=[final])
@@ -118,8 +119,8 @@ class QNetwork():
 	'''
         target = reward
         if not done:
-            target = (reward + gamma * np.amax(self.model.predict(next_state)[0]))
-        target_f = self.model.predict(state)
+            target = (reward + gamma * np.amax(self.model_backup.predict(next_state)[0]))
+        target_f = self.model_backup.predict(state)
         target_f[0][action] = target
         self.model.fit(state, target_f, epochs=1, verbose=1)
 
@@ -298,7 +299,7 @@ def gen_state_pos(SVM, s_pos, domain_2_reps, rep_dim, num_hist=10):
 def get_final_state_rep(h_pos, h_cand):
 	h_pos = h_pos.flatten()
 	h_cand = h_cand.flatten()
-	h_final = np.concatenate((h_pos, h_cand), axis=0)
+	h_final = np.concatenate((h_cand, h_pos), axis=0)
 	state = np.zeros((1, h_final.shape[0]),dtype='float')
 	state[0,:] = h_final
 	return state
@@ -330,6 +331,7 @@ if __name__ == '__main__':
 	num_hist = 10
 	num_classes = 31
 	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
+	update_point = 10
 
 	# Load the data
        	domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim = data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir)
@@ -347,6 +349,7 @@ if __name__ == '__main__':
 	sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 	num_actions = len(sampled_idxs) + 1
 	state_size = len(sampled_idxs)*num_classes + num_classes*num_hist
+	#state_size = len(sampled_idxs)*num_classes
 	q_agent = QNetwork(num_actions, state_size)
 
 	# Do the first iteration of network
@@ -392,8 +395,11 @@ if __name__ == '__main__':
 
 		# Train the Q-agent
 		q_agent.train(state, action, reward, next_state, done=False, gamma=1)
-		print('Acu at '  + str(given_iter) + ': ' + str(accu) + ' | No. S_pos: ' + str(len(s_pos)) + ' | exp_th: ' + str(exp_th))
+		print('Acu at '  + str(given_iter) + ': ' + str(accu) + ' | No. S_pos: ' + str(len(s_pos)) + ' | exp_th: ' + str(exp_th) + ' | reward: ' + str(reward))
 
+		# Update the backup model.
+		if given_iter%update_point == 0 and given_iter != 0:
+                        q_agent.model_backup = copy.copy(q_agent.model)
                 # Check if environment needs to be reset
                 check_flag = check_reset(dict_domain_2, sample_num)
                 if check_flag == True:
