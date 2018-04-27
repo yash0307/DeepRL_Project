@@ -39,7 +39,7 @@ class QNetwork():
 	        model_type (type string): Name of model type to be used. Possible valies: 'linear_dqn', 'dqn', 'ddqn', 'dqn_space_invaders'
 	'''
 	environment_name = 'DomainAdaptation'
-	model_type = 'dqn'
+	model_type = 'ddqn'
         self.model = self.LinearDQN_initialize(model_type, num_actions, state_size)
 
     def checkpoint_swap(self, environment_name):
@@ -84,9 +84,9 @@ class QNetwork():
 
         if model_type == 'dqn':
             model = Sequential()
-            model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
-            model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros'))
-            model.add(Dense(num_actions, activation='linear', kernel_initializer='glorot_normal', bias_initializer='zeros'))
+            model.add(Dense(state_size, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
+            model.add(Dense(512, input_dim=state_size, activation='relu', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
+            model.add(Dense(num_actions, activation='sigmoid', kernel_initializer='glorot_normal', bias_initializer='zeros', use_bias=True))
 
         if model_type == 'ddqn':
             input_layer = Input(shape=(state_size,))
@@ -95,8 +95,9 @@ class QNetwork():
             y = Dense(512, activation='relu')(input_layer)
             y = Dense(512, activation='relu')(y)
             adv_vals = Dense(num_actions, activation='linear')(y)
-            policy = keras.layers.merge([adv_vals, state_val], mode=lambda x: x[0]-K.mean(x[0])+x[1], output_shape = (self.num_actions,))
-            model = Model(input=[input_layer], output=[policy])
+            policy = keras.layers.merge([adv_vals, state_val], mode=lambda x: x[0]-K.mean(x[0])+x[1], output_shape = (num_actions,))
+            final = Activation('sigmoid')(policy)
+            model = Model(input=[input_layer], output=[final])
 
         model.summary()
         model.compile(loss='mean_squared_error', optimizer=keras.optimizers.Adam(lr=0.001))
@@ -314,7 +315,7 @@ def sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample
 
 def check_reset(dict_domain_2, sample_num):
 	available_samples = [i for i in dict_domain_2.keys() if dict_domain_2[i] == 0]
-	if len(available_samples) < sample_num: return True
+	if len(available_samples) < sample_num+1: return True
 	else: return False
 
 if __name__ == '__main__':
@@ -362,27 +363,16 @@ if __name__ == '__main__':
                 dict_domain_2[sample_id] = 1
 
 	for given_iter in range(1, max_iters):
-		# Check if environment needs to be reset
-		check_flag = check_reset(dict_domain_2, sample_num)
-		if check_flag == True:
-
-			q_agent.save_model_weights(self.model, 'model_'+str(given_iter)+'.h5')
-
-			# Create a dict for samples in domain-2
-        		dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
-
-        		# Get positive and reward sets
-        		s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
 
 		# Get reward and current state parameters
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
-		#if np.random.rand() <= float(max_explore_iter-given_iter)/float(max_explore_iter) and given_iter <= max_explore_iter:
-		#if False:
-		#	action = np.random.choice(range(0,num_actions), size=1)[0]
-		#else: 
-		action = q_agent.get_action(state)
+		exp_th = float(max_explore_iter-given_iter)/float(max_explore_iter)
+		if np.random.rand() <= exp_th and given_iter <= max_explore_iter:
+			action = np.random.choice(range(0,num_actions), size=1)[0]
+		else: 
+			action = q_agent.get_action(state)
 		print('Action Taken: ' + str(action))
 		if action <= sample_num-1:
 			sample_id = sampled_idxs[action]
@@ -402,4 +392,14 @@ if __name__ == '__main__':
 
 		# Train the Q-agent
 		q_agent.train(state, action, reward, next_state, done=False, gamma=1)
-		print('Acu at '  + str(given_iter) + ': ' + str(accu) + ' | No. S_pos: ' + str(len(s_pos)))
+		print('Acu at '  + str(given_iter) + ': ' + str(accu) + ' | No. S_pos: ' + str(len(s_pos)) + ' | exp_th: ' + str(exp_th))
+
+                # Check if environment needs to be reset
+                check_flag = check_reset(dict_domain_2, sample_num)
+                if check_flag == True:
+                        q_agent.save_model_weights(q_agent.model, 'model_'+str(given_iter)+'.h5')
+        		domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim = data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir)
+		        dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
+		        s_pos, reward_set, dict_domain_2 = gen_s_pos_and_reward_set(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
+		        domain_2_labels = get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels)
+
