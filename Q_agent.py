@@ -111,7 +111,6 @@ class QNetwork():
 	        state (type numpy array): contains array of size as number of environment state variables.
 	'''
         pred_action = self.model.predict(state)
-	print(pred_action)
         return np.argmax(pred_action[0])
 
     def train(self, state, action, reward, next_state, done, gamma):
