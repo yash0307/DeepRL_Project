@@ -111,6 +111,7 @@ class QNetwork():
 	        state (type numpy array): contains array of size as number of environment state variables.
 	'''
         pred_action = self.model.predict(state)
+	print(pred_action)
         return np.argmax(pred_action[0])
 
     def train(self, state, action, reward, next_state, done, gamma):
@@ -322,7 +323,7 @@ def check_reset(dict_domain_2, sample_num):
 if __name__ == '__main__':
 
 	source_domain = 'amazon'
-	target_domain = 'dslr'
+	target_domain = 'webcam'
 	num_s_pos_samples = 100
 	num_reward_samples = 3
 	max_iters = 20000
@@ -330,12 +331,11 @@ if __name__ == '__main__':
 	max_explore_iter = 2000
 	num_hist = 10
 	num_classes = 31
-	data_dir = '/home/yash/Sem2/DeepRL/Project/Amazon-finetune-features/'
+	data_dir = '/home/yash/Project/Amazon-finetune-features/'
 	update_point = 10
 
 	# Load the data
        	domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim = data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir)
-
         # Create a dict for samples in domain-2
         dict_domain_2 = init_dict_domain_2(domain_2_reps, domain_2_labels) # All indexes are zero by default
 
@@ -364,7 +364,7 @@ if __name__ == '__main__':
          	sample_id = sampled_idxs[action]
                 s_pos.append(sample_id)
                 dict_domain_2[sample_id] = 1
-
+	best_acu = float(0)
 	for given_iter in range(1, max_iters):
 
 		# Get reward and current state parameters
@@ -390,6 +390,10 @@ if __name__ == '__main__':
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		next_state = get_final_state_rep(h_pos, h_cand)
 		given_accu = check_accu(reward_set, domain_2_reps, given_SVM, rep_dim)
+		if given_accu > best_acu:
+			best_acu = given_accu
+			q_agent.save_model_weights(q_agent.model, 'model_best.h5')
+			joblib.dump(given_SVM, 'svm_best.pkl')
                 reward = (given_accu - accu)
                 accu = given_accu
 
