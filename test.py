@@ -103,6 +103,14 @@ def gen_s_pos(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, nu
 			given_sample_distance = sample_distances[given_sample]
 			class_dist_dict[given_class].append((given_sample, given_sample_distance))
 	
+	reward_set = {}
+	for given_class in class_dist_dict.keys():
+		if given_class not in reward_set.keys():
+			reward_set[given_class] = []
+		given_class_list = sorted(class_dist_dict[given_class], key=lambda x:x[1])
+		for given_sample in given_class_list[:num_reward_samples]:
+			reward_set[given_class].append(given_sample[0])
+			dict_domain_2[given_sample[0]] = int(1)
 	s_pos = []
 	sample_distances_pairs = []
 	for given_sample in range(0, len(sample_distances)):
@@ -112,18 +120,26 @@ def gen_s_pos(domain_1_reps, domain_2_reps, domain_1_labels, domain_2_labels, nu
 	for given_sample in sorted_sample_dist[len(sorted_sample_dist)-num_s_pos_samples:]:
 		s_pos.append(given_sample[0])
 		dict_domain_2[given_sample[0]] = int(1)
-	return s_pos, dict_domain_2
+	return s_pos, reward_set, dict_domain_2
+
 ##### End Initialization #####
 
 ##### Train n-way classifier #####
-def train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim):
-	num_samples = len(s_pos)
+def train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim, reward_set, num_reward_set):
+	num_samples = len(s_pos) + len(reward_set.keys())*num_reward_set
 	X = np.zeros((num_samples, rep_dim), dtype='float')
 	Y = np.zeros((num_samples, 1), dtype='float')
-	for i in range(0, num_samples):
-		given_sample = s_pos[i]
+	i = 0
+	for given_class in reward_set.keys():
+		for given_class_sample in reward_set[given_class]:
+			X[i,:] = domain_2_reps[given_class_sample,:]
+			Y[i,:] = given_class
+			i += 1
+	for idx in range(0, len(s_pos)):
+		given_sample = s_pos[idx]
 		X[i,:] = domain_2_reps[given_sample,:]
 		Y[i] = domain_2_labels[given_sample]
+		i += 1
 	scaler = preprocessing.StandardScaler().fit(X)
         X_scaled = scaler.transform(X)
         given_SVM = svm.LinearSVC(multi_class='ovr')
@@ -275,9 +291,9 @@ def check_reset(dict_domain_2, sample_num):
 if __name__ == '__main__':
 
 	source_domain = 'amazon'
-	target_domain = 'dslr'
+	target_domain = 'webcam'
 	num_s_pos_samples = 100
-	num_reward_samples = 2
+	num_reward_samples = 3
 	max_iters = 20000
 	sample_num = 20
 	max_explore_iter = 2000
@@ -285,31 +301,32 @@ if __name__ == '__main__':
 	num_classes = 31
 	data_dir = '/home/yash/Project/Amazon-finetune-features/'
 	update_point = 10
-	model_path = './a2d_r3/model_5110.h5'
+	model_path = './a_to_w/model_best.h5'
 
 	best_acu = float(0)
        	domain_1_reps, domain_2_reps, domain_1_labels, test_domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim = data_loader(source_domain, target_domain, num_s_pos_samples, num_reward_samples, data_dir)
         dict_domain_2 = init_dict_domain_2(domain_2_reps, test_domain_2_labels)
-	s_pos, dict_domain_2 = gen_s_pos(domain_1_reps, domain_2_reps, domain_1_labels, test_domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
+	s_pos, reward_set, dict_domain_2 = gen_s_pos(domain_1_reps, domain_2_reps, domain_1_labels, test_domain_2_labels, num_domain_1_images, num_domain_2_images, rep_dim, dict_domain_2)
 	domain_2_labels = get_unlabelled_predictions(domain_1_reps, domain_2_reps, domain_1_labels)
 	sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
 	num_actions = len(sampled_idxs) + 1
 	state_size = len(sampled_idxs)*num_classes + num_classes*num_hist
 	q_agent = QNetwork(num_actions, state_size, model_path)
-	given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
+	given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim, reward_set, num_reward_samples)
         accu = test_check_accu(domain_2_reps, test_domain_2_labels, given_SVM, rep_dim)
 	print('Acu at 0: ' + str(accu))
         h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
         h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
         state = get_final_state_rep(h_pos, h_cand)
         action = q_agent.get_action(state)
+	best_acu = 0
         if action <= sample_num-1:
          	sample_id = sampled_idxs[action]
                 s_pos.append(sample_id)
                 dict_domain_2[sample_id] = 1
 	for given_iter in range(1, max_iters):
 		sampled_idxs = sample_images(domain_2_reps, domain_2_labels, dict_domain_2, rep_dim, sample_num)
-		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim)
+		given_SVM = train_SVM(s_pos, domain_2_labels, domain_2_reps, rep_dim, reward_set, num_reward_samples)
 		h_pos = gen_state_pos(given_SVM, s_pos, domain_2_reps, rep_dim)
 		h_cand = gen_state_samples(given_SVM, sampled_idxs, domain_2_reps, rep_dim)
 		state = get_final_state_rep(h_pos, h_cand)
@@ -320,9 +337,10 @@ if __name__ == '__main__':
 			dict_domain_2[sample_id] = 1
 		else: print('Do nothing action taken')
 		given_accu = test_check_accu(domain_2_reps, test_domain_2_labels, given_SVM, rep_dim)
-		if given_accu > best_acu:
+		if given_accu >= best_acu:
 			best_acu = given_accu
-		print((str(given_accu),str(len(s_pos))))
+			print('Best Acu: ' + str(best_acu))
+		print((str(given_accu) +'\t' + str(len(s_pos))))
                 check_flag = check_reset(dict_domain_2, sample_num)
                 if check_flag == True:
 			break
